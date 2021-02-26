@@ -25,6 +25,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	corev1alpha1 "k8s.io/api/core/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -52,13 +53,48 @@ func logsForObject(restClientGetter genericclioptions.RESTClientGetter, object, 
 }
 
 // this is split for easy test-ability
-func logsForObjectWithClient(clientset corev1client.CoreV1Interface, object, options runtime.Object, timeout time.Duration, allContainers bool) (map[corev1.ObjectReference]rest.ResponseWrapper, error) {
-	opts, ok := options.(*corev1.PodLogOptions)
-	if !ok {
-		return nil, errors.New("provided options object is not a PodLogOptions")
+func logsForObjectWithClient(clientset corev1client.CoreV1Interface, object, options runtime.Object, timeout time.Duration, allContainers bool) (map[corev1.ObjectReference]rest.ResponseWrapper, error) {	
+	switch t := object.(type) {
+	case (*corev1.NodeList || *corev1.Node):
+		opts, ok := options.(*corev1.NodeLogOptions)
+		if !ok {
+			return nil, errors.New("provided options object for node logs is not a NodeLogOptions object")
+		}
+	case (*corev1.PodList || *corev1.Pod):
+		opts, ok := options.(*corev1.PodLogOptions)
+		if !ok {
+			return nil, errors.New("provided options object for pod logs is not a PodLogOptions object")
+		}
 	}
 
 	switch t := object.(type) {
+	case *corev1.NodeList:
+		ret := make(map[corev1.ObjectReference]rest.ResponseWrapper)
+		for i := range t.Items {
+			currRet, err := logsForObjectWithClient(clientset, &t.Items[i], options, timeout, false)
+			if err != nil {
+				return nil, err
+			}
+			for k, v := range currRet {
+				ret[k] = v
+			}
+		}
+		return ret, nil
+
+	case *corev1.Node:	
+		if len(t.Status.Addresses) == 0 {
+			return nil, errors.New("node %s has node no address", t.Name)
+		}
+
+		ref, err := reference.GetReference(scheme.Scheme, t)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to construct reference to '%#v': %v", t, err)
+		}
+
+		ret := make(map[corev1.ObjectReference]rest.ResponseWrapper, 1)
+		ret[*ref] = clientset.Nodes().GetLogs(t.Name, opts)
+		return ret, nil
+
 	case *corev1.PodList:
 		ret := make(map[corev1.ObjectReference]rest.ResponseWrapper)
 		for i := range t.Items {
@@ -168,6 +204,8 @@ func logsForObjectWithClient(clientset corev1client.CoreV1Interface, object, opt
 		return ret, nil
 	}
 
+	// default:
+	// check whether or not provided object type supports pod label selectors 
 	namespace, selector, err := SelectorsForObject(object)
 	if err != nil {
 		return nil, fmt.Errorf("cannot get the logs from %T: %v", object, err)
