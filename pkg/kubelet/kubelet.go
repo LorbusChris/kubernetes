@@ -1415,13 +1415,17 @@ func (kl *Kubelet) initializeRuntimeDependentModules() {
 func (kl *Kubelet) Run(updates <-chan kubetypes.PodUpdate) {
 	if kl.logServer == nil {
 		file := http.FileServer(http.Dir("/var/log/"))
-		kl.logServer = http.StripPrefix("/logs/", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			if req.URL.Path == "journal" {
-				journal.ServeHTTP(w, req)
-				return
-			}
-			file.ServeHTTP(w, req)
-		}))
+		if utilfeature.DefaultFeatureGate.Enabled(features.NodeLogs) {
+			kl.logServer = http.StripPrefix("/logs/", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if req.URL.Path == "journal" {
+					journal.ServeHTTP(w, req)
+					return
+				}
+				file.ServeHTTP(w, req)
+			}))
+		} else {
+			kl.logServer = http.StripPrefix("/logs/", file)
+		}
 	}
 	if kl.kubeClient == nil {
 		klog.InfoS("No API server defined - no node status update will be sent")

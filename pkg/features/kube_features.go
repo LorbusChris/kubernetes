@@ -752,6 +752,13 @@ const (
 	//
 	// Enables apiserver and kubelet to allow up to 32 DNSSearchPaths and up to 2048 DNSSearchListChars.
 	ExpandedDNSConfig featuregate.Feature = "ExpandedDNSConfig"
+
+	// owner: @aravindhp @LorbusChris
+	// kep: http://kep.k8s.io/2271
+	// alpha: v1.22
+	//
+	// Enables viewing logs of node services using kubectl log
+	NodeLogs featuregate.Feature = "NodeLogs"
 )
 
 func init() {
@@ -863,6 +870,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	DisableCloudProviders:                          {Default: false, PreRelease: featuregate.Alpha},
 	StatefulSetMinReadySeconds:                     {Default: false, PreRelease: featuregate.Alpha},
 	ExpandedDNSConfig:                              {Default: false, PreRelease: featuregate.Alpha},
+	NodeLogs:                                       {Default: false, PreRelease: featuregate.Alpha},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
